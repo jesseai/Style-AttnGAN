@@ -1,5 +1,10 @@
-The functioning test of this code requires:
-code  DAMSMencoders  data  eval  examples  models  output.
+The functioning test of this code requires the following directories:
+
+code  DAMSMencoders  data  eval  examples  models  output
+
+Some of them are empty and need to be filled before this can run. 
+
+
 In the test, symbolic links to the following directories are used,
 
   DAMSMencoders
