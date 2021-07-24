@@ -28,7 +28,7 @@ from transformers import GPT2Model
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
-    def __init__(self, output_dir, data_loader, n_words, ixtoword, text_encoder_type ):
+    def __init__(self, output_dir, data_loader, n_words, ixtoword, text_encoder_type, globaltimestamp ):
         if cfg.TRAIN.FLAG:
             self.output_dir = output_dir
             self.model_dir = os.path.join(output_dir, 'Model')
@@ -47,7 +47,7 @@ class condGANTrainer(object):
         self.ixtoword = ixtoword
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
-
+        self.globaltimestamp=globaltimestamp
         self.text_encoder_type = text_encoder_type.casefold()
         if self.text_encoder_type not in ( 'rnn', 'transformer' ):
           raise ValueError( 'Unsupported text_encoder_type' )
@@ -65,12 +65,12 @@ class condGANTrainer(object):
         image_encoder.load_state_dict(state_dict)
         for p in image_encoder.parameters():
             p.requires_grad = False
-        print('Load image encoder from:', img_encoder_path)
+        print('(trainer.py) Load image encoder from:', img_encoder_path)
         image_encoder.eval()
 
         if self.text_encoder_type == 'rnn':
             text_encoder = \
-                RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
+                RNN_ENCODER(self.n_words,  nhidden=cfg.TEXT.EMBEDDING_DIM)
         elif self.text_encoder_type == 'transformer':
             text_encoder = GPT2Model.from_pretrained( TRANSFORMER_ENCODER )
         state_dict = \
@@ -79,7 +79,7 @@ class condGANTrainer(object):
         text_encoder.load_state_dict(state_dict)
         for p in text_encoder.parameters():
             p.requires_grad = False
-        print('Load text encoder from:', cfg.TRAIN.NET_E)
+        print('(trainer.py)Load text encoder from:', cfg.TRAIN.NET_E)
         text_encoder.eval()
 
         # #######################generator and discriminators############## #
@@ -198,13 +198,13 @@ class condGANTrainer(object):
 
         # ###################text encoder########################### #
         if self.text_encoder_type == 'rnn':
-            text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
+            text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM )
         elif self.text_encoder_type == 'transformer':
             text_encoder = GPT2Model.from_pretrained( TRANSFORMER_ENCODER )
         state_dict = \
             torch.load(cfg.TRAIN.NET_E, map_location=lambda storage, loc: storage)
         text_encoder.load_state_dict(state_dict)
-        print('Load text encoder from:', cfg.TRAIN.NET_E)
+        print('(trainer.py) : build_models_eval : Load text encoder from:', cfg.TRAIN.NET_E)
         text_encoder = text_encoder.cuda()
         text_encoder.eval()
 
@@ -479,11 +479,12 @@ class condGANTrainer(object):
                 #######################################################
                 # (1) Extract text embeddings
                 ######################################################
+                print ("(1) Extract text embeddings")
                 if self.text_encoder_type == 'rnn':
                     hidden = text_encoder.init_hidden(batch_size)
                     words_embs, sent_emb = text_encoder( captions, cap_lens, hidden )
                 elif self.text_encoder_type == 'transformer':
-                    words_embs = text_encoder( captions )[0].transpose(1, 2).contiguous()
+                    words_embs = text_encoder( captions, self.globaltimestamp )[0].transpose(1, 2).contiguous()
                     sent_emb = words_embs[ :, :, -1 ].contiguous()
                 # words_embs: batch_size x nef x seq_len
                 # sent_emb: batch_size x nef
@@ -498,6 +499,7 @@ class condGANTrainer(object):
                 ######################################################
                 noise.data.normal_(0, 1)
                 fake_imgs, _, _, _ = netG(noise, sent_emb, words_embs, mask)
+                print ("(2) Generate fake images")
                 for j in range(batch_size):
                     s_tmp = '%s/single/%s' % (save_dir, keys[j])
                     folder = s_tmp[:s_tmp.rfind('/')]
@@ -520,28 +522,42 @@ class condGANTrainer(object):
         model_dir = cfg.TRAIN.NET_G  # the path to save generated images
 
         # Build and load the generator and text encoder
+        print ("(trainer.py) gen_example : Build and load the generator and text encoder")
         text_encoder, netG = self.build_models_eval()
 
         # the path to save generated images
         s_tmp = cfg.TRAIN.NET_G[:cfg.TRAIN.NET_G.rfind('.pth')]
         # print( data_dic.keys() )
         save_dirs = []
-
+        print ("(trainer.py) s_tmp is ")
+        print (s_tmp)
         for key in data_dic:
             save_dir = '%s/%s' % (s_tmp, key)
             save_dirs.append( save_dir )
             mkdir_p(save_dir)
             captions, cap_lens, sorted_indices = data_dic[key]
-
+            print ("save_dir")
+            print (save_dir)
             batch_size = captions.shape[0]
             nz = cfg.GAN.Z_DIM
-
+            
             with torch.no_grad():
                 captions = Variable(torch.from_numpy(captions))
                 cap_lens = Variable(torch.from_numpy(cap_lens))
 
+
+
+
                 captions = captions.cuda()
+
+
                 cap_lens = cap_lens.cuda()
+
+
+                print ("captions")
+                print (captions)
+                print ("indices")
+                print (cap_lens)
 
             for i in range(1):  # 16
                 with torch.no_grad():
@@ -554,10 +570,11 @@ class condGANTrainer(object):
                 ######################################################
                 if self.text_encoder_type == 'rnn':
                     hidden = text_encoder.init_hidden(batch_size)
-                    words_embs, sent_emb = text_encoder( captions, cap_lens, hidden )
+                    words_embs, sent_emb = text_encoder( captions, cap_lens, hidden, self.globaltimestamp  )
                 elif self.text_encoder_type == 'transformer':
                     words_embs = text_encoder( captions )[0].transpose(1, 2).contiguous()
-                    sent_emb = words_embs[ :, :, -1 ].contiguous()                    
+                    sent_emb = words_embs[ :, :, -1 ].contiguous()
+                    print ("(trainer.py) gen_example (1) Extract text embeddings")
                 # words_embs: batch_size x nef x seq_len
                 # sent_emb: batch_size x nef
                 mask = (captions == 0)
@@ -600,3 +617,114 @@ class condGANTrainer(object):
                             fullpath = '%s_a%d.png' % (save_name, k)
                             im.save(fullpath)
         return save_dirs
+
+
+
+
+
+
+
+
+
+    def gen_example_i(self, data_dic):
+        model_dir = cfg.TRAIN.NET_G  # the path to save generated images
+
+        # Build and load the generator and text encoder
+        print ("(trainer.py) gen_example : Build and load the generator and text encoder")
+        text_encoder, netG = self.build_models_eval()
+
+        # the path to save generated images
+        s_tmp = cfg.TRAIN.NET_G[:cfg.TRAIN.NET_G.rfind('.pth')]
+        # print( data_dic.keys() )
+        save_dirs = []
+        print ("(trainer.py) s_tmp is ")
+        print (s_tmp)
+        for key in data_dic:
+            save_dir = '%s/%s' % (s_tmp, key)
+            save_dirs.append( save_dir )
+            mkdir_p(save_dir)
+            captions, cap_lens, sorted_indices = data_dic[key]
+            print ("save_dir")
+            print (save_dir)
+            batch_size = captions.shape[0]
+            nz = cfg.GAN.Z_DIM
+
+            with torch.no_grad():
+                captions = Variable(torch.from_numpy(captions))
+                cap_lens = Variable(torch.from_numpy(cap_lens))
+                #jesse
+                #variable_cap_lens = np.array([0])
+                #cap_lens = Variable(torch.from_numpy(  variable_cap_lens  ))
+
+                captions = captions.cuda()
+                captions = torch.tensor([[4839, 1946, 2951, 1227]] ,device='cuda:0')
+                captions = torch.tensor([[39, 46, 51, 27]] ,device='cuda:0')
+                cap_lens = cap_lens.cuda()
+                cap_lens = torch.tensor([4] ,device='cuda:0')
+
+                print ("captions")
+                print (captions)
+                print ("indices")
+                print (cap_lens)
+
+
+
+            for i in range(1):  # 16
+                with torch.no_grad():
+                    noise = Variable(torch.FloatTensor(batch_size, nz))
+                    # noise = Variable(torch.FloatTensor(1, nz))
+                    noise = noise.cuda()
+
+                #######################################################
+                # (1) Extract text embeddings
+                ######################################################
+                if self.text_encoder_type == 'rnn':
+                    hidden = text_encoder.init_hidden(batch_size)
+                    words_embs, sent_emb = text_encoder( captions, cap_lens, hidden )
+                elif self.text_encoder_type == 'transformer':
+                    words_embs = text_encoder( captions )[0].transpose(1, 2).contiguous()
+                    sent_emb = words_embs[ :, :, -1 ].contiguous()
+                    print ("(trainer.py) gen_example (1) Extract text embeddings")
+                # words_embs: batch_size x nef x seq_len
+                # sent_emb: batch_size x nef
+                mask = (captions == 0)
+
+                #######################################################
+                # (2) Generate fake images
+                ######################################################
+                noise.data.normal_(0, 1)
+                # noise = noise.repeat( batch_size, 1 )
+                fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
+                # G attention
+                cap_lens_np = cap_lens.cpu().data.numpy()
+                for j in range(batch_size):
+                    save_name = '%s/%d_s_%d' % (save_dir, i, sorted_indices[j])
+                    for k in range(len(fake_imgs)):
+                        im = fake_imgs[k][j].data.cpu().numpy()
+                        im = (im + 1.0) * 127.5
+                        im = im.astype(np.uint8)
+                        # print('im', im.shape)
+                        im = np.transpose(im, (1, 2, 0))
+                        # print('im', im.shape)
+                        im = Image.fromarray(im)
+                        fullpath = '%s_g%d.png' % (save_name, k)
+                        im.save(fullpath)
+
+                    for k in range(len(attention_maps)):
+                        if len(fake_imgs) > 1:
+                            im = fake_imgs[k + 1].detach().cpu()
+                        else:
+                            im = fake_imgs[0].detach().cpu()
+                        attn_maps = attention_maps[k]
+                        att_sze = attn_maps.size(2)
+                        img_set, sentences = \
+                            build_super_images2(im[j].unsqueeze(0),
+                                                captions[j].unsqueeze(0),
+                                                [cap_lens_np[j]], self.ixtoword,
+                                                [attn_maps[j]], att_sze)
+                        if img_set is not None:
+                            im = Image.fromarray(img_set)
+                            fullpath = '%s_a%d.png' % (save_name, k)
+                            im.save(fullpath)
+        return save_dirs
+

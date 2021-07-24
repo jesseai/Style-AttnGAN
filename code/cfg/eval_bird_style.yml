@@ -2,10 +2,9 @@ CONFIG_NAME: 'attn2'
 
 DATASET_NAME: 'birds'
 DATA_DIR: '../data/birds'
-GPU_ID: 0
 WORKERS: 1
 
-B_VALIDATION: True  # True  # False
+B_VALIDATION: False #True  # True  # False
 
 B_FID: True  # False
 # B_IS: True  # False
@@ -17,7 +16,18 @@ TREE:
 
 TRAIN:
     FLAG: False
-    NET_G: '../models/bird_StyleAttnGAN2.pth'
+
+    # 20210724
+    # the location of NET_G is not the same as the origal StyleAttnGAN
+    # however the model is the same
+    # it can be moved anywhere, however the output images will be 
+    # written to the model directory.
+    # this not reasonable, but thats how it is coded.
+    # for example,
+    # ../models/bak20210705/orig_models/bird_StyleAttnGAN2/20210614/0_s_0_g2.png
+    # and this image is used in the web interface.
+    NET_G: '../models/bak20210705/orig_models/bird_StyleAttnGAN2.pth'
+    #NET_G: '../models/bird_StyleAttnGAN2.pth'
     B_NET_D: False
     BATCH_SIZE: 8
     NET_E: '../DAMSMencoders/bird/text_encoder200.pth'

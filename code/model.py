@@ -8,6 +8,9 @@ import torch.nn.functional as F
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+import datetime
+import re
+
 import numpy as np
 
 from miscc.config import cfg
@@ -18,6 +21,12 @@ from gan_lab.stylegan.architectures import StyleMappingNetwork, StyleConditioned
 from gan_lab.utils.latent_utils import gen_rand_latent_vars
 from gan_lab.utils.custom_layers import LinearEx, Conv2dEx, Conv2dBias, Lambda, \
                                         NormalizeLayer, get_blur_op, concat_mbstd_layer
+
+
+import json
+
+
+#globaltimestamp = str(datetime.datetime.now())
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
@@ -132,10 +141,11 @@ class ResBlock(nn.Module):
 # ############## Text2Image Encoder-Decoder #######
 TRANSFORMER_ENCODER = 'gpt2'
 
-class RNN_ENCODER(nn.Module):
+class RNN_ENCODER(nn.Module ):
     def __init__(self, ntoken, ninput=300, drop_prob=0.5,
                  nhidden=128, nlayers=1, bidirectional=True):
         super(RNN_ENCODER, self).__init__()
+        print ("this is where pytorch doesn't support a drop_prob=0.5 with nlayers=1")
         self.n_steps = cfg.TEXT.WORDS_NUM
         self.ntoken = ntoken  # size of the dictionary
         self.ninput = ninput  # size of each embedding vector
@@ -143,6 +153,8 @@ class RNN_ENCODER(nn.Module):
         self.nlayers = nlayers  # Number of recurrent layers
         self.bidirectional = bidirectional
         self.rnn_type = cfg.RNN_TYPE
+        self.globaltimestamp = str(datetime.datetime.now()) 
+       # globaltimestamp=self.globaltimestamp
         if bidirectional:
             self.num_directions = 2
         else:
@@ -190,7 +202,9 @@ class RNN_ENCODER(nn.Module):
             return Variable(weight.new(self.nlayers * self.num_directions,
                                        bsz, self.nhidden).zero_())
 
-    def forward(self, captions, cap_lens, hidden, mask=None):
+    def forward(self, captions, cap_lens, hidden, mask=None ):
+        print ("self.globaltimestamp is ")
+        print (self.globaltimestamp)
         # input: torch.LongTensor of size batch x n_steps
         # --> emb: batch x n_steps x ninput
         emb = self.drop(self.encoder(captions))
@@ -216,8 +230,53 @@ class RNN_ENCODER(nn.Module):
         else:
             sent_emb = hidden.transpose(0, 1).contiguous()
         sent_emb = sent_emb.view(-1, self.nhidden * self.num_directions)
-        return words_emb, sent_emb
+        print ( "words_emb is stored in the JSON as nodes[], sent_emb is a tensor containing the initial hidden state for each element" )
+        # make a JSON face featureset & graph dataset too
+        theJSON = {}
+        theJSON["nodes"] = []
+        theJSON["sent_emb"] = []
+        theJSON["links"] = []
+        theJSON["nodes"].append( words_emb.tolist() )
+        #d = {'key1': 1, 'key2': 2, 'key3': 3}
+        #theJSON["nodes"][0].append( {'text': "this node contains a tensor" } )
+        qq=0
+        for q in theJSON["nodes"][0][0]:
+          print('nodes')
+          print(q)
+          #theJSON["nodes"][0].append( {'text': "oop" } )
+          qq=qq+1
+        theJSON["sent_emb"].append( sent_emb.tolist() )
+        json_dump = json.dumps(theJSON) 
+    
+        #print(json_dump )
+        globaltimestamp = self.globaltimestamp
+        fj = open("../output/textEncoderStates/out_working_feature_tensor.json", "w")
+        print(json_dump, file=fj)
+        fj.close()
+        timestampname0 = "../output/textEncoderStates/" + globaltimestamp + ".json"
+        timestampname = re.sub('[!@#$\- :]', '', timestampname0)
+        fj = open( timestampname , "w")
+        print(json_dump, file=fj)
+        fj.close()
 
+        # Opening JSON file
+        fj = open("../output/textEncoderStates/out_working_feature_tensor.json",)
+        readTheFile = json.load(fj)
+        encodedToList = readTheFile['nodes'] 
+        print ( "words_emb shape", words_emb.shape[1] )
+        readBack = torch.Tensor( encodedToList ).cuda()
+        readBack = readBack.view(1, 256, words_emb.shape[2])
+        print ( "readBack shape", readBack.shape )
+        a = [1, 2, 3]
+        b = torch.FloatTensor(a)
+
+        print ( "words_emb data")
+        print (words_emb.tolist() )
+        print ( "readBack data" )
+        print (readBack.tolist() )
+        print ( "end words_emb" )
+        #return words_emb, sent_emb
+        return readBack, sent_emb
 
 # ############## G networks ###################
 class CNN_ENCODER(nn.Module):
@@ -268,6 +327,8 @@ class CNN_ENCODER(nn.Module):
     def forward(self, x):
         features = None
         # --> fixed-size input: batch x 3 x 299 x 299
+        # The image encoderis a Convolutional Neural Network(CNN) that maps images to semantic vectors. The inter-mediate layers of the CNN learn local features of differentsub-regions of the image, while the later layers learn globalfeatures of the image.  More specifically, our image en-coder is built upon the Inception-v3 model [26] pretrainedon ImageNet [22]. We first rescale the input image to be299×299 pixels. And then, we extract the local feature ma-trixf∈R768⇥289(reshaped from 768×17×17) from the“mixed6e” layer of Inception-v3. Each column offis thefeature vector of a sub-region of the image. 768 is the di-mension of the local feature vector, and 289 is the numberof sub-regions in the image. Meanwhile, the global featurevectorf∈R2048is extracted from the last average poolinglayer of Inception-v3. Finally, we convert the image fea-tures to a common semantic space of text features by addinga perceptron layer:
+
         x = nn.functional.interpolate(x,size=(299, 299), mode='bilinear', align_corners=False)
         # 299 x 299 x 3
         x = self.Conv2d_1a_3x3(x)
@@ -1350,3 +1411,73 @@ class D_NET256(nn.Module):
         x_code4 = self.img_code_s64_1(x_code4)
         x_code4 = self.img_code_s64_2(x_code4)
         return x_code4
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _to_json_dict_with_strings(dictionary):
+    """
+    Convert dict to dict with leafs only being strings. So it recursively makes keys to strings
+    if they are not dictionaries.
+
+    Use case:
+        - saving dictionary of tensors (convert the tensors to strins!)
+        - saving arguments from script (e.g. argparse) for it to be pretty
+
+    e.g.
+
+    """
+    if type(dictionary) != dict:
+        return str(dictionary)
+    d = {k: _to_json_dict_with_strings(v) for k, v in dictionary.items()}
+    return d
+
+def to_json(dic):
+    import types
+    import argparse
+
+    if type(dic) is dict:
+        dic = dict(dic)
+    else:
+        dic = dic.__dict__
+    return _to_json_dict_with_strings(dic)
+    
+def save_to_json_pretty(dic, path, mode='w', indent=4, sort_keys=True):
+    import json
+
+    with open(path, mode) as f:
+        json.dump(to_json(dic), f, indent=indent, sort_keys=sort_keys)
+
+def my_pprint(dic):
+    """
+
+    @param dic:
+    @return:
+
+    Note: this is not the same as pprint.
+    """
+    import json
+
+    # make all keys strings recursively with their naitve str function
+    dic = to_json(dic)
+    # pretty print
+    pretty_dic = json.dumps(dic, indent=4, sort_keys=True)
+    print(pretty_dic)
+    # print(json.dumps(dic, indent=4, sort_keys=True))
+    # return pretty_dic
+
+
+
+

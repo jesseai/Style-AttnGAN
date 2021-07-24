@@ -119,7 +119,10 @@ class TextDataset(data.Dataset):
             self.bbox = None
         split_dir = os.path.join(data_dir, split)
 
+        print ("building ix")
+        print ("data_dir")
         print( data_dir )
+        print ()
         self.filenames, self.captions, self.ixtoword, \
             self.wordtoix, self.n_words = self.load_text_data(data_dir, split)
 
@@ -239,7 +242,11 @@ class TextDataset(data.Dataset):
         filepath = os.path.join(data_dir, 'captions.pickle')
         train_names = self.load_filenames(data_dir, 'train')
         test_names = self.load_filenames(data_dir, 'test')
-        print( filepath )
+        
+        print ("load_text_data")
+        print (filepath)
+        print ("this will generate ix")
+
         if not os.path.isfile(filepath):
             train_captions = self.load_captions(data_dir, train_names)
             test_captions = self.load_captions(data_dir, test_names)

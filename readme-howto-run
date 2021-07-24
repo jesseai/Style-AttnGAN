@@ -1,0 +1,27 @@
+It is necessary to have an input feature tensor, 
+
+to get this you may copy 
+	Style-AttnGAN/output/textEncoderStates/out_working_feature_tensor.json
+to
+	Style-AttnGAN/output/textEncoderStates/in_working_feature_tensor.json
+
+The web interface also does this on save.
+
+
+
+
+
+The simplest way to run this, is to use the run.sh script, with your input words:
+
+run.sh 'blue green'
+
+Note the number of words is 2, it is not possible to mix different quanties of words in
+	out_working_feature_tensor.json
+and
+	in_working_feature_tensor.json
+
+They must be the same size.
+
+
+
+
