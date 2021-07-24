@@ -1,0 +1,9 @@
+The functioning test of this code requires:
+code  DAMSMencoders  data  eval  examples  models  output.
+In the test, symbolic links to the following directories are used,
+
+  DAMSMencoders
+  output
+  data
+
+Note that the output directory has subdirector

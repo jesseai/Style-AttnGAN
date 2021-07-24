@@ -27,8 +27,15 @@ from transformers import GPT2Tokenizer
 from tqdm import tqdm
 import pytorch_fid.fid_score
 
+import datetime
+import re
+
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
+
+global globaltimestamp 
+globaltimestamp = str(datetime.datetime.now())
+
 
 
 def parse_args():
@@ -68,9 +75,11 @@ def gen_example(wordtoix, text_encoder_type, algo):
                         continue
                     sent = sent.replace("\ufffd\ufffd", " ")
                     if text_encoder_type == 'rnn':
+                      print ("text_encoder_type: rrn ")
                       tokenizer = RegexpTokenizer(r'\w+')
                       tokens = tokenizer.tokenize( sent.lower() )
                     elif text_encoder_type == 'transformer':
+                      print ("text_encoder_type: transformer ")
                       tokenizer = GPT2Tokenizer.from_pretrained( TRANSFORMER_ENCODER )
                       tokens = tokenizer.tokenize( sent )
                     if len(tokens) == 0:
@@ -82,6 +91,10 @@ def gen_example(wordtoix, text_encoder_type, algo):
                         t = t.encode('ascii', 'ignore').decode('ascii')
                         if len(t) > 0 and t in wordtoix:
                             rev.append(wordtoix[t])
+                            print ("Found Token: ")
+                            print ( t )
+                            print ("index")
+                            print(wordtoix[t])
                     captions.append(rev)
                     cap_lens.append(len(rev))
             max_len = np.max(cap_lens)
@@ -102,6 +115,7 @@ def gen_example(wordtoix, text_encoder_type, algo):
 
 if __name__ == "__main__":
     args = parse_args()
+    print (globaltimestamp ) #= str(datetime.datetime.now())
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
@@ -141,6 +155,8 @@ if __name__ == "__main__":
         transforms.Resize(int(imsize * 76 / 64)),
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
+    print ("TextDataset cfg.DATA_DIR")
+    print (cfg.DATA_DIR)
     dataset = TextDataset(cfg.DATA_DIR, args.text_encoder_type, split_dir,
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)
@@ -150,7 +166,7 @@ if __name__ == "__main__":
         drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
 
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type)
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type, globaltimestamp)
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:
@@ -163,6 +179,7 @@ if __name__ == "__main__":
         if not cfg.B_VALIDATION:
             # generate images for customized captions
             print( '\nRunning on example captions...\n++++++++++++++++++++++++++++++' )
+            print (dataset.wordtoix)
             root_dir_g = gen_example(dataset.wordtoix, dataset.text_encoder_type, algo)
             end_t = time.time()
             print('Total time for running on example captions:', end_t - start_t)
