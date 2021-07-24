@@ -17,7 +17,7 @@ TREE:
 TRAIN:
     FLAG: False
 
-    # 20210724jesse
+    # 20210724
     # the location of NET_G is not the same as the origal StyleAttnGAN
     # however the model is the same
     # it can be moved anywhere, however the output images will be 
