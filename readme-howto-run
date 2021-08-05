@@ -8,6 +8,14 @@ to
 The web interface also does this on save.
 
 
+It is also necessary in this version to have a 'B' feature tensor, which is interpolated with the in_working_feature_tensor.
+
+to get this you may copy
+        Style-AttnGAN/output/textEncoderStates/out_working_feature_tensor.json
+to
+        Style-AttnGAN/output/textEncoderStates/B_working_feature_tensor.json
+
+//
 
 
 
