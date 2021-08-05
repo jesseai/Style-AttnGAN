@@ -20,6 +20,13 @@ from model import TRANSFORMER_ENCODER, RNN_ENCODER, CNN_ENCODER
 from miscc.losses import words_loss
 from miscc.losses import discriminator_loss, generator_loss, KL_loss
 import os
+
+#jesse20210730
+import datetime
+import re
+import json
+#essej
+
 import time
 import numpy as np
 import sys
@@ -28,7 +35,7 @@ from transformers import GPT2Model
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
-    def __init__(self, output_dir, data_loader, n_words, ixtoword, text_encoder_type, globaltimestamp ):
+    def __init__(self, output_dir, data_loader, n_words, ixtoword, text_encoder_type, globaltimestamp, latentSpaceMode ):
         if cfg.TRAIN.FLAG:
             self.output_dir = output_dir
             self.model_dir = os.path.join(output_dir, 'Model')
@@ -47,7 +54,7 @@ class condGANTrainer(object):
         self.ixtoword = ixtoword
         self.data_loader = data_loader
         self.num_batches = len(self.data_loader)
-        self.globaltimestamp=globaltimestamp
+        self.in_globaltimestamp=globaltimestamp
         self.text_encoder_type = text_encoder_type.casefold()
         if self.text_encoder_type not in ( 'rnn', 'transformer' ):
           raise ValueError( 'Unsupported text_encoder_type' )
@@ -70,7 +77,7 @@ class condGANTrainer(object):
 
         if self.text_encoder_type == 'rnn':
             text_encoder = \
-                RNN_ENCODER(self.n_words,  nhidden=cfg.TEXT.EMBEDDING_DIM)
+                RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM, globaltimestamp=self.in_globaltimestamp)
         elif self.text_encoder_type == 'transformer':
             text_encoder = GPT2Model.from_pretrained( TRANSFORMER_ENCODER )
         state_dict = \
@@ -198,7 +205,7 @@ class condGANTrainer(object):
 
         # ###################text encoder########################### #
         if self.text_encoder_type == 'rnn':
-            text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM )
+            text_encoder = RNN_ENCODER(self.n_words, globaltimestamp=self.in_globaltimestamp, nhidden=cfg.TEXT.EMBEDDING_DIM )
         elif self.text_encoder_type == 'transformer':
             text_encoder = GPT2Model.from_pretrained( TRANSFORMER_ENCODER )
         state_dict = \
@@ -484,7 +491,7 @@ class condGANTrainer(object):
                     hidden = text_encoder.init_hidden(batch_size)
                     words_embs, sent_emb = text_encoder( captions, cap_lens, hidden )
                 elif self.text_encoder_type == 'transformer':
-                    words_embs = text_encoder( captions, self.globaltimestamp )[0].transpose(1, 2).contiguous()
+                    words_embs = text_encoder( captions, self.in_globaltimestamp )[0].transpose(1, 2).contiguous()
                     sent_emb = words_embs[ :, :, -1 ].contiguous()
                 # words_embs: batch_size x nef x seq_len
                 # sent_emb: batch_size x nef
@@ -514,13 +521,15 @@ class condGANTrainer(object):
                     im = im.astype(np.uint8)
                     im = np.transpose(im, (1, 2, 0))
                     im = Image.fromarray(im)
-                    fullpath = '%s_s%d.png' % (s_tmp, k)
+                    fullpath = '%s_s%d._.png' % (s_tmp, k)
                     im.save(fullpath)
         return save_dir
 
-    def gen_example(self, data_dic):
+    def gen_example(self, data_dic, frames=10):
+        AR = False
+        theAmountOfNoise = 9
         model_dir = cfg.TRAIN.NET_G  # the path to save generated images
-
+        frames = frames
         # Build and load the generator and text encoder
         print ("(trainer.py) gen_example : Build and load the generator and text encoder")
         text_encoder, netG = self.build_models_eval()
@@ -535,7 +544,7 @@ class condGANTrainer(object):
             save_dir = '%s/%s' % (s_tmp, key)
             save_dirs.append( save_dir )
             mkdir_p(save_dir)
-            captions, cap_lens, sorted_indices = data_dic[key]
+            captions, cap_lens, sorted_indices, string_of_tokens, in_timestamp, frames = data_dic[key]
             print ("save_dir")
             print (save_dir)
             batch_size = captions.shape[0]
@@ -554,11 +563,13 @@ class condGANTrainer(object):
                 cap_lens = cap_lens.cuda()
 
 
-                print ("captions")
+                print ("captions0")
                 print (captions)
-                print ("indices")
+                print ("indices0")
                 print (cap_lens)
-
+                print ("string_of_tokens")
+                print (string_of_tokens)
+                print (in_timestamp)
             for i in range(1):  # 16
                 with torch.no_grad():
                     noise = Variable(torch.FloatTensor(batch_size, nz))
@@ -570,7 +581,7 @@ class condGANTrainer(object):
                 ######################################################
                 if self.text_encoder_type == 'rnn':
                     hidden = text_encoder.init_hidden(batch_size)
-                    words_embs, sent_emb = text_encoder( captions, cap_lens, hidden, self.globaltimestamp  )
+                    words_embs, sent_emb = text_encoder( captions, cap_lens, hidden, self.in_globaltimestamp  )
                 elif self.text_encoder_type == 'transformer':
                     words_embs = text_encoder( captions )[0].transpose(1, 2).contiguous()
                     sent_emb = words_embs[ :, :, -1 ].contiguous()
@@ -579,48 +590,154 @@ class condGANTrainer(object):
                 # sent_emb: batch_size x nef
                 mask = (captions == 0)
 
+
+
+
+
+                # Opening JSON fi
+                fj = open("../output/textEncoderStates/B_working_feature_tensor.json",)
+
+                readTheFile = json.load(fj)
+
+                encodedToList = readTheFile['nodes']
+                print ( "trainer.py words_embs shape", words_embs.shape[1] )
+                readBack = torch.Tensor( encodedToList ).cuda()
+                # change if GPT2
+                readBack = readBack.view(1, 256, words_embs.shape[2])
+                print ( "trainer.py readBack shape", readBack.shape )
+
+                ##words_embs = (words_embs *.5 ) + readBack
                 #######################################################
                 # (2) Generate fake images
                 ######################################################
-                noise.data.normal_(0, 1)
+                theNoise = noise.data.normal_(0, theAmountOfNoise)
+                print("theNoise:" + str(theNoise))
                 # noise = noise.repeat( batch_size, 1 )
-                fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
+                ##fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
                 # G attention
-                cap_lens_np = cap_lens.cpu().data.numpy()
-                for j in range(batch_size):
-                    save_name = '%s/%d_s_%d' % (save_dir, i, sorted_indices[j])
-                    for k in range(len(fake_imgs)):
-                        im = fake_imgs[k][j].data.cpu().numpy()
-                        im = (im + 1.0) * 127.5
-                        im = im.astype(np.uint8)
-                        # print('im', im.shape)
-                        im = np.transpose(im, (1, 2, 0))
-                        # print('im', im.shape)
-                        im = Image.fromarray(im)
-                        fullpath = '%s_g%d.png' % (save_name, k)
-                        im.save(fullpath)
+                
+                #frames = 10
 
-                    for k in range(len(attention_maps)):
-                        if len(fake_imgs) > 1:
-                            im = fake_imgs[k + 1].detach().cpu()
-                        else:
-                            im = fake_imgs[0].detach().cpu()
-                        attn_maps = attention_maps[k]
-                        att_sze = attn_maps.size(2)
-                        img_set, sentences = \
-                            build_super_images2(im[j].unsqueeze(0),
-                                                captions[j].unsqueeze(0),
-                                                [cap_lens_np[j]], self.ixtoword,
-                                                [attn_maps[j]], att_sze)
-                        if img_set is not None:
-                            im = Image.fromarray(img_set)
-                            fullpath = '%s_a%d.png' % (save_name, k)
-                            im.save(fullpath)
+                globaltimestamp0 = in_timestamp #self.globaltimestamp
+                globaltimestampname = re.sub('[!@#$\- :]', '', globaltimestamp0)
+                dirstamp = globaltimestampname[2:8]
+                dirpath= save_dir + "/" +dirstamp + "/"
+                print (save_dir)
+                if not os.path.exists(dirpath):
+                  os.mkdir(dirpath)
+                #timestampname0 = "../output/textEncoderStates/" + dirstamp + "/" + globaltimestamp + ".json"
+                #timestampname = re.sub('[!@#$\- :]', '', timestampname0)
+
+
+                tensorJSONSfilesURL = "/dp/attngan/Style-AttnGAN/output/textEncoderStates/"
+
+                if AR == True:
+                    head = open( "xh.html" , "r")
+                
+
+                #fj = open( "/org//dp/attngan/Style-AttnGAN/models/bak20210705/orig_models/bird_StyleAttnGAN2/20210614/disp.html" , "w")
+                fj = open( dirpath + "/" + globaltimestampname +".html" , "w")
+                #print(, file=fj)
+                #fj.close()
+                if AR == True:
+                    print(head.read(), file=fj) 
+
+                # Opening JSON fi
+                #fj = open("../output/textEncoderStates/B_working_feature_tensor.json",)
+        
+                #readTheFile = json.load(fj)
+
+                #encodedToList = readTheFile['nodes']
+                #print ( "trainer.py words_embs shape", words_embs.shape[1] )
+                #readBack = torch.Tensor( encodedToList ).cuda()
+                # change if GPT2
+                #readBack = readBack.view(1, 256, words_embs.shape[2])
+                #print ( "trainer.py readBack shape", readBack.shape )
+#                a = [1, 2, 3]
+#                b = torch.FloatTensor(a)
+
+                #print ( "words_emb data")
+                #print (words_embs.tolist() )
+                #print ( "trainer.py readBack data" )
+                #print (readBack.tolist() )
+                #print ( "end words_emb" )
+        #return words_emb, sent_emb
+
+                
+
+
+                for f in range(frames):
+                  a = 1 - (1/frames) * f
+                  b = (1/frames) * f 
+                  print (a,b)
+
+                  words_embs = (words_embs *a ) + (readBack * b)
+                  
+                  fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
+                  #print ("noise:"+str(noise)) 
+                  
+                  # this is the first element in the word feature tensor
+                  # print ( str( words_embs[0][0].tolist() )  , file=fj)
+
+                  cap_lens_np = cap_lens.cpu().data.numpy()
+                  for j in range(batch_size):
+                      print ("batch size is:" , batch_size)
+                      #save_name = '%s/%d_s_%d' % (save_dir, i, sorted_indices[j])
+                      save_name = '%s/%d_s_%d' % (dirpath, i, sorted_indices[j])
+                      for k in range(len(fake_imgs)):
+                          im = fake_imgs[k][j].data.cpu().numpy()
+                          im = (im + 1.0) * 127.5
+                          im = im.astype(np.uint8)
+                        # print('im', im.shape)
+                          im = np.transpose(im, (1, 2, 0))
+                        # print('im', im.shape)
+                          im = Image.fromarray(im)
+                          timestampname = re.sub('[!@#$\- :]', '', in_timestamp + string_of_tokens + '_f'+str(f))
+                          timestampnameJSONfile = re.sub('[!@#$\- :]', '', in_timestamp )
+                          fullpath = '%s_%s_g%d.png' % (save_name,timestampname,k)
+                          #fullpath = '%s_%s_g%d.png' % (dirpath,timestampname,k)
+                          prefix = '%d_s_%d' % (i, sorted_indices[j])
+                          filename = '_%s_g%d.png' % (timestampname,k)
+                          if k == 2:
+                              #print (fullpath, file=fj)
+                              #print ('<span>'+str(words_embs[0:20])+'<img src='+ prefix + filename + '></span>', file=fj)
+                              picid = timestampname
+                              if AR == True:
+                                  print ('<div id="Item_'+ str(picid) +'" name="Item_'+ str(picid) +'_Name" class="press" itemID="'+ str(picid) +'" onclick="getInfo(this.id);" >', file=fj)
+                                  print ('<a href=#>', file=fj)
+                                  print ('<img id="itemImage" src='+ str(prefix + filename) +' >', file=fj)
+                                  print ('</a>', file=fj)
+                                  print ('<br>', file=fj)
+                                  print ('<span id="ItemText" class="ItemText" style="font-size: 5vw;" >'+ str(picid)  +'</span>', file=fj)
+                                  print ('</div>', file=fj)
+
+
+
+                              print ('<span><a href=' + str(tensorJSONSfilesURL) + str(dirstamp)+"/" +str(timestampnameJSONfile)+ ".json >" + '<img src='+ prefix + filename + '></a></span>', file=fj)
+                          #print ( 1 - (1/frames) * f)
+                          im.save(fullpath)
+
+                      for k in range(len(attention_maps)):
+                          if len(fake_imgs) > 1:
+                              im = fake_imgs[k + 1].detach().cpu()
+                          else:
+                              im = fake_imgs[0].detach().cpu()
+                          attn_maps = attention_maps[k]
+                          att_sze = attn_maps.size(2)
+                          img_set, sentences = \
+                              build_super_images2(im[j].unsqueeze(0),
+                                                  captions[j].unsqueeze(0),
+                                                  [cap_lens_np[j]], self.ixtoword,
+                                                  [attn_maps[j]], att_sze)
+                          if img_set is not None:
+                              im = Image.fromarray(img_set)
+                              fullpath = '%s_a%d.png' % (save_name, k)
+                              im.save(fullpath)
+        if AR==True:
+            tail = open( "xt2.html" , "r")
+            print(tail.read(), file=fj)
+        fj.close()
         return save_dirs
-
-
-
-
 
 
 
@@ -657,24 +774,24 @@ class condGANTrainer(object):
                 #cap_lens = Variable(torch.from_numpy(  variable_cap_lens  ))
 
                 captions = captions.cuda()
-                captions = torch.tensor([[4839, 1946, 2951, 1227]] ,device='cuda:0')
-                captions = torch.tensor([[39, 46, 51, 27]] ,device='cuda:0')
-                cap_lens = cap_lens.cuda()
-                cap_lens = torch.tensor([4] ,device='cuda:0')
+                #captions = torch.tensor([[4839, 1946, 2951, 1227]] ,device='cuda:0')
+                #captions = torch.tensor([[39, 46, 51, 27]] ,device='cuda:0')
+                #cap_lens = cap_lens.cuda()
+                #cap_lens = torch.tensor([4] ,device='cuda:0')
 
-                print ("captions")
+                print ("captionsG")
                 print (captions)
-                print ("indices")
+                print ("indicesG")
                 print (cap_lens)
 
 
-
+            #howMuchNoise = 0 #1
             for i in range(1):  # 16
                 with torch.no_grad():
                     noise = Variable(torch.FloatTensor(batch_size, nz))
                     # noise = Variable(torch.FloatTensor(1, nz))
                     noise = noise.cuda()
-
+          
                 #######################################################
                 # (1) Extract text embeddings
                 ######################################################
@@ -692,13 +809,13 @@ class condGANTrainer(object):
                 #######################################################
                 # (2) Generate fake images
                 ######################################################
-                noise.data.normal_(0, 1)
+                noise.data.normal_(0, theAmountOfNoise)
                 # noise = noise.repeat( batch_size, 1 )
                 fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
                 # G attention
                 cap_lens_np = cap_lens.cpu().data.numpy()
-                for j in range(batch_size):
-                    save_name = '%s/%d_s_%d' % (save_dir, i, sorted_indices[j])
+                for j in range(3):
+                    save_name = '%s/%d_s_%d' % (save_dir, i, sorted_indices[0])
                     for k in range(len(fake_imgs)):
                         im = fake_imgs[k][j].data.cpu().numpy()
                         im = (im + 1.0) * 127.5
@@ -707,7 +824,7 @@ class condGANTrainer(object):
                         im = np.transpose(im, (1, 2, 0))
                         # print('im', im.shape)
                         im = Image.fromarray(im)
-                        fullpath = '%s_g%d.png' % (save_name, k)
+                        fullpath = '%s_g%d.__.png' % (save_name, k)
                         im.save(fullpath)
 
                     for k in range(len(attention_maps)):

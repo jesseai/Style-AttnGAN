@@ -34,8 +34,9 @@ dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
 
 global globaltimestamp 
+global latentSpaceMode
 globaltimestamp = str(datetime.datetime.now())
-
+latentSpaceMode="1"
 
 
 def parse_args():
@@ -47,14 +48,19 @@ def parse_args():
     parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
     parser.add_argument('--manualSeed', type=int, help='manual seed')
     parser.add_argument('--text_encoder_type', type=str.casefold, default = 'rnn' )
+    # add latentSpaceMode
+    parser.add_argument('--latentSpaceMode', dest='latentSpaceMode', type=str, default='1')
+    parser.add_argument('--frames', dest='frames', type=int, default='10')
+    parser.add_argument('--AR', dest='AR', type=bool, default=False)
     args = parser.parse_args()
     return args
 
 
-def gen_example(wordtoix, text_encoder_type, algo):
+def gen_example(wordtoix, text_encoder_type, algo, frames):
     '''generate images from example sentences'''
     filepath = '%s/example_filenames.txt' % (cfg.DATA_DIR)
     data_dic = {}
+    frames = frames
     text_encoder_type = text_encoder_type.casefold()
     if text_encoder_type not in ( 'rnn', 'transformer' ):
       raise ValueError( 'Unsupported text_encoder_type' )
@@ -87,6 +93,7 @@ def gen_example(wordtoix, text_encoder_type, algo):
                         continue
 
                     rev = []
+                    string_of_tokens=""
                     for t in tokens:
                         t = t.encode('ascii', 'ignore').decode('ascii')
                         if len(t) > 0 and t in wordtoix:
@@ -95,6 +102,7 @@ def gen_example(wordtoix, text_encoder_type, algo):
                             print ( t )
                             print ("index")
                             print(wordtoix[t])
+                            string_of_tokens = string_of_tokens + t
                     captions.append(rev)
                     cap_lens.append(len(rev))
             max_len = np.max(cap_lens)
@@ -109,7 +117,7 @@ def gen_example(wordtoix, text_encoder_type, algo):
                 c_len = len(cap)
                 cap_array[i, :c_len] = cap
             key = name[(name.rfind('/') + 1):]
-            data_dic[key] = [cap_array, cap_lens, sorted_indices]
+            data_dic[key] = [cap_array, cap_lens, sorted_indices, string_of_tokens, globaltimestamp, frames ]
     algo.gen_example(data_dic)
 
 
@@ -141,6 +149,7 @@ if __name__ == "__main__":
 
     now = datetime.datetime.now(dateutil.tz.tzlocal())
     timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
+    frames = args.frames
     output_dir = '../output/%s_%s_%s' % \
         (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
 
@@ -166,7 +175,8 @@ if __name__ == "__main__":
         drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
 
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type, globaltimestamp)
+
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type, globaltimestamp, latentSpaceMode)
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:
@@ -180,7 +190,8 @@ if __name__ == "__main__":
             # generate images for customized captions
             print( '\nRunning on example captions...\n++++++++++++++++++++++++++++++' )
             print (dataset.wordtoix)
-            root_dir_g = gen_example(dataset.wordtoix, dataset.text_encoder_type, algo)
+            #frames = 3 
+            root_dir_g = gen_example(dataset.wordtoix, dataset.text_encoder_type, algo, frames)
             end_t = time.time()
             print('Total time for running on example captions:', end_t - start_t)
         else:

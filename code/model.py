@@ -10,6 +10,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 import datetime
 import re
+import os
 
 import numpy as np
 
@@ -142,7 +143,7 @@ class ResBlock(nn.Module):
 TRANSFORMER_ENCODER = 'gpt2'
 
 class RNN_ENCODER(nn.Module ):
-    def __init__(self, ntoken, ninput=300, drop_prob=0.5,
+    def __init__(self, ntoken, globaltimestamp, ninput=300, drop_prob=0.5,
                  nhidden=128, nlayers=1, bidirectional=True):
         super(RNN_ENCODER, self).__init__()
         print ("this is where pytorch doesn't support a drop_prob=0.5 with nlayers=1")
@@ -153,8 +154,8 @@ class RNN_ENCODER(nn.Module ):
         self.nlayers = nlayers  # Number of recurrent layers
         self.bidirectional = bidirectional
         self.rnn_type = cfg.RNN_TYPE
-        self.globaltimestamp = str(datetime.datetime.now()) 
-       # globaltimestamp=self.globaltimestamp
+        #self.globaltimestamp = str(datetime.datetime.now()) 
+        self.globaltimestamp=globaltimestamp
         if bidirectional:
             self.num_directions = 2
         else:
@@ -253,15 +254,27 @@ class RNN_ENCODER(nn.Module ):
         fj = open("../output/textEncoderStates/out_working_feature_tensor.json", "w")
         print(json_dump, file=fj)
         fj.close()
-        timestampname0 = "../output/textEncoderStates/" + globaltimestamp + ".json"
+        #dirstamp = globaltimestamp[2:6]
+        #os.mkdir("../output/textEncoderStates/" +dirstamp)
+        #timestampname0 = "../output/textEncoderStates/" + dirstamp "/" + globaltimestamp + ".json"
+        #timestampname = re.sub('[!@#$\- :]', '', timestampname0)
+        
+        globaltimestampname = re.sub('[!@#$\- :]', '', globaltimestamp)
+        dirstamp = globaltimestampname[2:8]
+        dirpath= "../output/textEncoderStates/" +dirstamp
+        if not os.path.exists(dirpath):
+          os.mkdir(dirpath)
+        timestampname0 = "../output/textEncoderStates/" + dirstamp + "/" + globaltimestamp + ".json"
         timestampname = re.sub('[!@#$\- :]', '', timestampname0)
+
         fj = open( timestampname , "w")
         print(json_dump, file=fj)
         fj.close()
 
         # Opening JSON file
-        fj = open("../output/textEncoderStates/out_working_feature_tensor.json",)
+        fj = open("../output/textEncoderStates/in_working_feature_tensor.json",)
         readTheFile = json.load(fj)
+        #encodedToList=[0.0,]
         encodedToList = readTheFile['nodes'] 
         print ( "words_emb shape", words_emb.shape[1] )
         readBack = torch.Tensor( encodedToList ).cuda()
