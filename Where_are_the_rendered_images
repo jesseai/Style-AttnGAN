@@ -1,0 +1,45 @@
+
+
+Where are the rendered images written?
+
+Its complicated:
+
+The NET_G variable is defined in,
+	Style-AttnGAN/code/cfg/eval_bird_style.yml
+
+ 
+as
+
+
+NET_G: '../models/bak20210705/orig_models/bird_StyleAttnGAN2/ + 
+
+
+
+then there is an 'example_filenames.txt' in,
+
+DATA_DIR: '../data/birds'
+
+pointing to,
+
+Style-AttnGAN/data/birds/example_filenames.txt 
+
+
+the contents of which is '20210614',
+
+
+which is appended to the model directory as an output location,
+
+
+so the result is (in this case) :
+
+
+	Style-AttnGAN/ +
+
+	models/bak20210705/orig_models/bird_StyleAttnGAN2/  +
+
+
+	20210614/ +
+
+	(YYMMDD) 210805/ +
+
+The files, which are png's, and HTML.
