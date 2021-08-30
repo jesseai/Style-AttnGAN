@@ -35,9 +35,13 @@ sys.path.append(dir_path)
 
 global globaltimestamp 
 global latentSpaceMode
+global string_of_tokens
 globaltimestamp = str(datetime.datetime.now())
 latentSpaceMode="1"
-
+string_of_tokens="unknown"
+#makeWords = True
+#renderIt = True
+debug = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a AttnGAN network')
@@ -52,11 +56,13 @@ def parse_args():
     parser.add_argument('--latentSpaceMode', dest='latentSpaceMode', type=str, default='1')
     parser.add_argument('--frames', dest='frames', type=int, default='10')
     parser.add_argument('--AR', dest='AR', type=bool, default=False)
+    parser.add_argument('--makeWords', dest='makeWords', type=bool, default=True)
+    parser.add_argument('--render', dest='renderIt', type=bool, default=True)
     args = parser.parse_args()
     return args
 
 
-def gen_example(wordtoix, text_encoder_type, algo, frames):
+def gen_example(wordtoix, text_encoder_type, algo, frames, makeWords, renderIt):
     '''generate images from example sentences'''
     filepath = '%s/example_filenames.txt' % (cfg.DATA_DIR)
     data_dic = {}
@@ -117,13 +123,16 @@ def gen_example(wordtoix, text_encoder_type, algo, frames):
                 c_len = len(cap)
                 cap_array[i, :c_len] = cap
             key = name[(name.rfind('/') + 1):]
-            data_dic[key] = [cap_array, cap_lens, sorted_indices, string_of_tokens, globaltimestamp, frames ]
-    algo.gen_example(data_dic)
-
+            data_dic[key] = [cap_array, cap_lens, sorted_indices, string_of_tokens, globaltimestamp, frames, string_of_tokens]
+    if makeWords:
+        algo.gen_word_feature_tensor(data_dic)
+    if renderIt:
+        algo.gen_example(data_dic)
 
 if __name__ == "__main__":
     args = parse_args()
     print (globaltimestamp ) #= str(datetime.datetime.now())
+    
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
@@ -150,6 +159,8 @@ if __name__ == "__main__":
     now = datetime.datetime.now(dateutil.tz.tzlocal())
     timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
     frames = args.frames
+    makeWords = args.makeWords
+    renderIt = args.renderIt
     output_dir = '../output/%s_%s_%s' % \
         (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
 
@@ -176,7 +187,7 @@ if __name__ == "__main__":
 
     # Define models and go to train/evaluate
 
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type, globaltimestamp, latentSpaceMode)
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset.text_encoder_type, globaltimestamp, latentSpaceMode, string_of_tokens)
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:
@@ -189,9 +200,10 @@ if __name__ == "__main__":
         if not cfg.B_VALIDATION:
             # generate images for customized captions
             print( '\nRunning on example captions...\n++++++++++++++++++++++++++++++' )
-            print (dataset.wordtoix)
+            if debug:
+                print (dataset.wordtoix)
             #frames = 3 
-            root_dir_g = gen_example(dataset.wordtoix, dataset.text_encoder_type, algo, frames)
+            root_dir_g = gen_example(dataset.wordtoix, dataset.text_encoder_type, algo, frames, makeWords, renderIt)
             end_t = time.time()
             print('Total time for running on example captions:', end_t - start_t)
         else:

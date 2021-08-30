@@ -26,6 +26,7 @@ from gan_lab.utils.custom_layers import LinearEx, Conv2dEx, Conv2dBias, Lambda, 
 
 import json
 
+debug = False
 
 #globaltimestamp = str(datetime.datetime.now())
 
@@ -143,7 +144,7 @@ class ResBlock(nn.Module):
 TRANSFORMER_ENCODER = 'gpt2'
 
 class RNN_ENCODER(nn.Module ):
-    def __init__(self, ntoken, globaltimestamp, ninput=300, drop_prob=0.5,
+    def __init__(self, ntoken, globaltimestamp, string_of_tokens, ninput=300, drop_prob=0.5,
                  nhidden=128, nlayers=1, bidirectional=True):
         super(RNN_ENCODER, self).__init__()
         print ("this is where pytorch doesn't support a drop_prob=0.5 with nlayers=1")
@@ -156,6 +157,7 @@ class RNN_ENCODER(nn.Module ):
         self.rnn_type = cfg.RNN_TYPE
         #self.globaltimestamp = str(datetime.datetime.now()) 
         self.globaltimestamp=globaltimestamp
+        self.in_string_of_tokens=string_of_tokens
         if bidirectional:
             self.num_directions = 2
         else:
@@ -204,12 +206,16 @@ class RNN_ENCODER(nn.Module ):
                                        bsz, self.nhidden).zero_())
 
     def forward(self, captions, cap_lens, hidden, mask=None ):
-        print ("self.globaltimestamp is ")
+        print ("This is model.py RNN_ENCODER  forward() where self.globaltimestamp is ")
         print (self.globaltimestamp)
         # input: torch.LongTensor of size batch x n_steps
         # --> emb: batch x n_steps x ninput
         emb = self.drop(self.encoder(captions))
         #
+        print ("m forward captions")
+        print (str(captions))
+        print ("self.in_string_of_token")
+        print (self.in_string_of_tokens)
         # Returns: a PackedSequence object
         cap_lens = cap_lens.data.tolist()
         emb = pack_padded_sequence(emb, cap_lens, batch_first=True)
@@ -231,27 +237,26 @@ class RNN_ENCODER(nn.Module ):
         else:
             sent_emb = hidden.transpose(0, 1).contiguous()
         sent_emb = sent_emb.view(-1, self.nhidden * self.num_directions)
-        print ( "words_emb is stored in the JSON as nodes[], sent_emb is a tensor containing the initial hidden state for each element" )
-        # make a JSON face featureset & graph dataset too
+        print ( "words_emb is stored now in JSON as nodes[], sent_emb is a tensor containing the initial hidden state for each element" )
+        # make a JSON featureset & graph dataset too
         theJSON = {}
         theJSON["nodes"] = []
         theJSON["sent_emb"] = []
         theJSON["links"] = []
-        theJSON["nodes"].append( words_emb.tolist() )
-        #d = {'key1': 1, 'key2': 2, 'key3': 3}
-        #theJSON["nodes"][0].append( {'text': "this node contains a tensor" } )
+        theJSON["nodes"].append( words_emb.tolist() ) 
         qq=0
-        for q in theJSON["nodes"][0][0]:
-          print('nodes')
-          print(q)
-          #theJSON["nodes"][0].append( {'text': "oop" } )
-          qq=qq+1
+        if debug:
+            for q in theJSON["nodes"][0][0]:
+              print('nodes')
+              print(q) 
+              qq=qq+1
         theJSON["sent_emb"].append( sent_emb.tolist() )
         json_dump = json.dumps(theJSON) 
     
         #print(json_dump )
         globaltimestamp = self.globaltimestamp
         fj = open("../output/textEncoderStates/out_working_feature_tensor.json", "w")
+        print ("writing out_working_feature_tensor.json to ../output/textEncoderStates/out_working_feature_tensor.json")
         print(json_dump, file=fj)
         fj.close()
         #dirstamp = globaltimestamp[2:6]
@@ -264,9 +269,9 @@ class RNN_ENCODER(nn.Module ):
         dirpath= "../output/textEncoderStates/" +dirstamp
         if not os.path.exists(dirpath):
           os.mkdir(dirpath)
-        timestampname0 = "../output/textEncoderStates/" + dirstamp + "/" + globaltimestamp + ".json"
+        timestampname0 = "../output/textEncoderStates/" + dirstamp + "/" + globaltimestamp + self.in_string_of_tokens +".json"
         timestampname = re.sub('[!@#$\- :]', '', timestampname0)
-
+        print ("writing to ", timestampname )
         fj = open( timestampname , "w")
         print(json_dump, file=fj)
         fj.close()
@@ -276,20 +281,21 @@ class RNN_ENCODER(nn.Module ):
         readTheFile = json.load(fj)
         #encodedToList=[0.0,]
         encodedToList = readTheFile['nodes'] 
-        print ( "words_emb shape", words_emb.shape[1] )
+        print ( "../output/textEncoderStates/in_working_feature_tensor.json, words_emb shape: ", words_emb.shape[1] )
         readBack = torch.Tensor( encodedToList ).cuda()
-        readBack = readBack.view(1, 256, words_emb.shape[2])
-        print ( "readBack shape", readBack.shape )
-        a = [1, 2, 3]
-        b = torch.FloatTensor(a)
+        #20210813 readBack = readBack.view(1, 256, words_emb.shape[2])
+        #print ( "readBack shape", readBack.shape )
+        #a = [1, 2, 3]
+        #b = torch.FloatTensor(a)
 
-        print ( "words_emb data")
-        print (words_emb.tolist() )
-        print ( "readBack data" )
-        print (readBack.tolist() )
-        print ( "end words_emb" )
-        #return words_emb, sent_emb
-        return readBack, sent_emb
+        if debug:
+            print ( "words_emb data")
+            print (words_emb.tolist() )
+            print ( "readBack data" )
+            print (readBack.tolist() )
+            print ( "end words_emb" )
+        return words_emb, sent_emb
+        #20210813 return readBack, sent_emb
 
 # ############## G networks ###################
 class CNN_ENCODER(nn.Module):
@@ -442,7 +448,7 @@ class INIT_STAGE_G_STYLED( nn.Module ):
         self.gf_dim = ngf  # ngf = LEN_LATENT*FMAP_G_INIT_FCTR
         # self.in_dim = cfg.GAN.Z_DIM + ncf
 
-        self._use_noise = True
+        self._use_noise = False #True  #jesse
         self._use_mixing_reg = True if cfg.GAN.PCT_MIXING_REG else False
 
         self.define_module()
@@ -656,7 +662,7 @@ class NEXT_STAGE_G_STYLED( nn.Module ):
         self.cf_dim = ncf
         self.num_residual = cfg.GAN.R_NUM
 
-        self._use_noise = True
+        self._use_noise = False #True #jesse20210805
         self._use_mixing_reg = True if cfg.GAN.PCT_MIXING_REG else False
 
         self.define_module()
@@ -952,12 +958,65 @@ class G_NET_STYLED( nn.Module ):
             :param mask: batch x seq_len
             :return:
         """
+        
+        #20210813
+        #z2_code = gen_rand_latent_vars( num_samples = z_code.shape[0], length = z_code.shape[1],
+        #                                                distribution = 'normal', device = z_code.device )
+        #style_mixing_stage = 1 #self.final_stage - 3
+        #end
+
+        # Opening JSON file
+        fj = open("../output/textEncoderStates/in_working_style_tensor.json",)
+        readTheFile = json.load(fj)
+        #encodedToList=[0.0,]
+        encodedToList = readTheFile['nodes']
+        #print ( "words_emb shape", words_emb.shape[1] )
+        readBack = torch.Tensor( encodedToList ).cuda()
+        readBack = readBack.view(1, 100)
+        print ( "style tensor readBack shape", readBack.shape ) 
+        #print ( "style tensor readBack data" )
+        #print (readBack.tolist() )
+
+
+        
+        #print ("z_code")
+        #print ( str(z_code) )
+        print ("replacing random z2_code with loaded z2_code.")
+        #print ( str(z2_code) )
+        
+        #20210813 
+        #z2_code = readBack
+        #print ( str(z2_code.shape ) )
+        #end
+
         fake_imgs = []
         att_maps = []
         c_code, mu, logvar = self.ca_net( sent_emb )
 
         w2_code = None
         if z2_code is not None:
+            print ( "words_emb is stored in the JSON as nodes[], sent_emb is a tensor containing the initial hidden state for each element" )
+            # make a JSON face featureset & graph dataset too
+            theJSON = {}
+            theJSON["nodes"] = []
+            theJSON["z2_code"] = []
+            theJSON["links"] = []
+            theJSON["nodes"].append( z2_code.tolist() )
+            #qq=0
+            #for q in theJSON["nodes"][0][0]:
+            #  print('nodes')
+            #  print(q)
+            #  qq=qq+1
+            theJSON["z2_code"].append( z2_code.tolist() )
+            json_dump = json.dumps(theJSON) 
+            globaltimestamp = 99999 #self.globaltimestamp
+            fj = open("../output/textEncoderStates/out_working_style_tensor.json", "w")
+            print(json_dump, file=fj)
+            fj.close()
+
+
+
+
             if style_mixing_stage is None or style_mixing_stage >= 2*self.final_stage:
                 raise ValueError( 'Please specify a valid style_mixing_stage if specifying a 2nd latent/dlatent variable' )
         else:
